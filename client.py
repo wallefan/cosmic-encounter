@@ -1,7 +1,8 @@
 """A slightly smarter telnet client that, if available, supports readline."""
 
 import telnetlib
-from telnetlib import IAC, WILL, DO, WONT, DONT
+from telnetlib import IAC, WILL, DO, WONT, DONT, SB, SE
+from curses.ascii import NAK
 try:
     import readline
     old_readline_callback=readline.get_completer()
@@ -9,10 +10,10 @@ except ImportError:
     readline=None
 
 def telnet_callback(sock, cmd, option):
-    global mode # the type of data we are aboit to 
+    global tn, old_completer, completion_result
     if option==OPTION_READLINE:
         if cmd==DO:
-            # Telnet: do not acknowledge a request to enter a mode we are already in
+            # Telnet: do not acknowledge a request to enter a requeat we are already in
             if readline is not None and readline.get_completer() is not completer:
                 old_completer=readline.get_completer()
                 readline.set_completer(completer)
@@ -23,17 +24,34 @@ def telnet_callback(sock, cmd, option):
             if readline is not None and readline.get_completer() is completer:
                 readline.set_completer(old_completer)
                 sock.sendall(IAC+WONT+OPTION_READLINE)
-    elif cmd==SE and readline is not None:
-        if mode is None:
-            sock.sendall(IAC+NAK)
-        elif mode==PARSE_AND_BIND:
-            readline.parse_and_bind(tn.read_sb_data().decode('ascii'))
-        elif mode==COMPLETION_MATCH:
-            completion_match=(tn.read_sb_data().decode('ascii'))
-        mode=None
-    elif cmd in (PARSE_AND_BIND, COMPLETION_MATCH
       
+    elif cmd==SE:
+        s = tn.read_sb_data()
+        opt = s[:1]
+        data = s[1:]
+        if opt == PARSE_AND_BIND:
+            if readline is not None:
+                readline.parse_and_bind(data.decode('ascii'))
+            else:
+                sock.sendall(IAC+WONT+OPTION_READLINE)
+        elif opt == COMPLETION_MATCHES:
+            completion_result = [r.decode('ascii') for r in data.split(COMPLETION_MATCH_SEP)]
+            result_ready.set()
+        else:
+            sock.sendall(IAC+NAK)
+        
+    elif cmd == NAK:
+        sock.sendall(IAC+SB+last_data+IAC+SE) # resend the last SB ... SE sent
+    
+    
               
-          
+def completer(text, nth):
+    return get_completions(text, readline.get_line_buffer(), readline.get_begidx(), readline.get_endidx())[nth]
+
+@functools.lru_cache(200)
+def get_completions(text, buffer, begidx, endidx):
+    to_send=text.encode('ascii')+SEP+buffer.encode('ascii')+SEP+begidx.to_bytes(2, 'little')+endidx.to_bytes(2, 'little')
+    tn.get_socket().sendall(IAC+SB+COMPLETE+to_send+IAC+SE)
+    last_data=COMPLETE+data
              
            
