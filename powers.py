@@ -1,10 +1,12 @@
 from abc import ABCMeta, abstractmethod
 import cmd
 
-class PowerAction(metaclass=ABCMeta):
-    @abstractmethod
-    def __call__(self, terminalArg):
-        pass
+def PowerAction(mandatory = None, ):
+    def decorator(func):
+        if mandatory is None:
+            mandatory = not func.__name__.startswith('do_')
+        func.mandatory=mamdatory
+        
     
     @abstractmethod
     @property
